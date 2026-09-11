@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "VaultLock",
+    "slug": "VaultLock",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "VaultLock usa Face ID para proteger el acceso a tus fotos, videos y documentos guardados.",
+        "NSPhotoLibraryUsageDescription": "VaultLock necesita acceso a tu galería para guardar y mostrar archivos protegidos.",
+        "NSCameraUsageDescription": "VaultLock necesita acceso a la cámara para capturar fotos y videos a proteger."
+      }
+    },
+    "android": {
+      "package": "com.fernando.vaultlock",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "READ_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "VaultLock usa Face ID para proteger tus archivos."
+        }
+      ]
+    ],
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
