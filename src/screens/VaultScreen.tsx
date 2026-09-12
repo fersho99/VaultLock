@@ -8,10 +8,12 @@ import {
   Image,
   Alert,
 } from "react-native";
-import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { deleteItem, listItems, VaultItem } from "../lib/db";
 import { importFileToVault, removeFileFromVault } from "../lib/vaultStorage";
+import { withRelockPaused } from "../lib/relockGuard";
+import ViewerScreen from "./ViewerScreen";
+import MediaPickerModal, { PickedMediaAsset } from "./MediaPickerModal";
 
 type Props = {
   onLock: () => void;
@@ -19,6 +21,8 @@ type Props = {
 
 export default function VaultScreen({ onLock }: Props) {
   const [items, setItems] = useState<VaultItem[]>([]);
+  const [viewing, setViewing] = useState<VaultItem | null>(null);
+  const [pickerVisible, setPickerVisible] = useState(false);
 
   const refresh = useCallback(() => {
     setItems(listItems());
@@ -28,34 +32,50 @@ export default function VaultScreen({ onLock }: Props) {
     refresh();
   }, [refresh]);
 
-  const pickMedia = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permiso requerido", "Necesitamos acceso a tu galería.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images", "videos"],
-      quality: 1,
-    });
-    if (result.canceled || !result.assets?.length) return;
+  const handleMediaPicked = async (assets: PickedMediaAsset[]) => {
+    setPickerVisible(false);
+    if (assets.length === 0) return;
 
-    for (const asset of result.assets) {
-      await importFileToVault({
-        sourceUri: asset.uri,
-        fileName: asset.fileName ?? asset.uri.split("/").pop() ?? "archivo",
-        mimeType: asset.mimeType ?? (asset.type === "video" ? "video/mp4" : "image/jpeg"),
-        size: asset.fileSize ?? null,
-      });
+    let anyGalleryError = false;
+    const galleryErrors: string[] = [];
+
+    for (const picked of assets) {
+      try {
+        const { galleryError } = await importFileToVault({
+          sourceUri: picked.uri,
+          fileName: picked.filename,
+          mimeType:
+            picked.mediaType === "video" ? "video/mp4" : "image/jpeg",
+          size: null,
+          mediaLibraryAssetId: picked.id,
+        });
+        if (galleryError) {
+          anyGalleryError = true;
+          galleryErrors.push(galleryError);
+        }
+      } catch (e) {
+        anyGalleryError = true;
+        galleryErrors.push(e instanceof Error ? e.message : "Error desconocido");
+      }
     }
+
     refresh();
+
+    if (anyGalleryError) {
+      Alert.alert(
+        "Guardado en la bóveda",
+        `El archivo ya está protegido, pero no se pudo quitar el original de la galería.\n\nDetalle: ${galleryErrors.join(", ")}`
+      );
+    }
   };
 
   const pickDocument = async () => {
-    const result = await DocumentPicker.getDocumentAsync({
-      multiple: true,
-      copyToCacheDirectory: true,
-    });
+    const result = await withRelockPaused(() =>
+      DocumentPicker.getDocumentAsync({
+        multiple: true,
+        copyToCacheDirectory: true,
+      })
+    );
     if (result.canceled || !result.assets?.length) return;
 
     for (const asset of result.assets) {
@@ -87,6 +107,7 @@ export default function VaultScreen({ onLock }: Props) {
   const renderItem = ({ item }: { item: VaultItem }) => (
     <TouchableOpacity
       style={styles.row}
+      onPress={() => setViewing(item)}
       onLongPress={() => handleDelete(item)}
     >
       {item.type === "image" ? (
@@ -131,13 +152,23 @@ export default function VaultScreen({ onLock }: Props) {
       />
 
       <View style={styles.actions}>
-        <TouchableOpacity style={styles.actionButton} onPress={pickMedia}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => setPickerVisible(true)}
+        >
           <Text style={styles.actionText}>📷 Foto/Video</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionButton} onPress={pickDocument}>
           <Text style={styles.actionText}>📄 Documento</Text>
         </TouchableOpacity>
       </View>
+
+      <ViewerScreen item={viewing} onClose={() => setViewing(null)} />
+      <MediaPickerModal
+        visible={pickerVisible}
+        onClose={() => setPickerVisible(false)}
+        onConfirm={handleMediaPicked}
+      />
     </View>
   );
 }

@@ -38,6 +38,14 @@
         {
           "faceIDPermission": "VaultLock usa Face ID para proteger tus archivos."
         }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "VaultLock necesita acceso a tu galería para mover fotos y videos a la bóveda.",
+          "savePhotosPermission": "VaultLock necesita permiso para eliminar el original de la galería una vez guardado en la bóveda.",
+          "isAccessMediaLocationEnabled": false
+        }
       ]
     ],
     "web": {

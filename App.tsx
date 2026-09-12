@@ -3,6 +3,7 @@ import { AppState, AppStateStatus, StatusBar } from "react-native";
 import LockScreen from "./src/screens/LockScreen";
 import VaultScreen from "./src/screens/VaultScreen";
 import { initDb } from "./src/lib/db";
+import { isRelockPaused } from "./src/lib/relockGuard";
 
 export default function App() {
   const [unlocked, setUnlocked] = useState(false);
@@ -12,14 +13,21 @@ export default function App() {
     initDb();
   }, []);
 
-  // Si la app pasa a background (el usuario sale o cambia de app),
+  // Si la app pasa a background de verdad (el usuario sale o cambia de app),
   // volvemos a pedir biometria al regresar. Esto es clave para una
   // "boveda" real: no basta con proteger solo el arranque en frio.
+  //
+  // OJO: solo "background" cuenta. "inactive" tambien se dispara con
+  // dialogos transitorios del sistema (permisos, selector de archivos,
+  // compartir, etc.) que NO significan que el usuario salio de la app —
+  // si reaccionamos a "inactive" tambien, la boveda se re-bloquea sola
+  // cada vez que se abre uno de esos dialogos.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
       if (
         appState.current === "active" &&
-        (next === "background" || next === "inactive")
+        next === "background" &&
+        !isRelockPaused()
       ) {
         setUnlocked(false);
       }

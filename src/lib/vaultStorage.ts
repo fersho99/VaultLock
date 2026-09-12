@@ -1,4 +1,6 @@
 import { Directory, File, Paths } from "expo-file-system";
+import * as MediaLibrary from "expo-media-library/legacy";
+import { withRelockPaused } from "./relockGuard";
 import { insertItem, VaultItem, VaultItemType } from "./db";
 
 // Carpeta privada dentro del sandbox de la app. En Android/iOS otras apps
@@ -19,15 +21,20 @@ function guessType(mimeType: string | null | undefined): VaultItemType {
 }
 
 /**
- * Copia un archivo (elegido con image-picker o document-picker) hacia el
+ * Copia un archivo (elegido con MediaPickerModal o document-picker) hacia el
  * directorio privado de la boveda y guarda su metadata en SQLite.
+ *
+ * Si viene un mediaLibraryAssetId (foto/video elegido de la galeria), tambien
+ * intenta borrar el original del carrete del telefono una vez copiado, para
+ * que deje de aparecer en la Galeria/Fotos del sistema.
  */
 export async function importFileToVault(params: {
   sourceUri: string;
   fileName: string;
   mimeType?: string | null;
   size?: number | null;
-}): Promise<VaultItem> {
+  mediaLibraryAssetId?: string | null;
+}): Promise<{ item: VaultItem; removedFromGallery: boolean; galleryError?: string }> {
   ensureVaultDir();
 
   const safeName = `${Date.now()}_${params.fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
@@ -36,7 +43,7 @@ export async function importFileToVault(params: {
 
   await sourceFile.copy(destFile);
 
-  return insertItem({
+  const item = insertItem({
     name: params.fileName,
     type: guessType(params.mimeType),
     uri: destFile.uri,
@@ -44,6 +51,33 @@ export async function importFileToVault(params: {
     size: params.size ?? null,
     createdAt: Date.now(),
   });
+
+  let removedFromGallery = false;
+  let galleryError: string | undefined;
+
+  if (params.mediaLibraryAssetId) {
+    try {
+      const perm = await withRelockPaused(() =>
+        MediaLibrary.requestPermissionsAsync()
+      );
+      if (perm.granted) {
+        const assetId = params.mediaLibraryAssetId;
+        const ok = await withRelockPaused(() =>
+          MediaLibrary.deleteAssetsAsync([assetId])
+        );
+        removedFromGallery = !!ok;
+        if (!ok) galleryError = "El sistema no confirmó la eliminación";
+      } else {
+        galleryError = "Sin permiso para modificar la galería";
+      }
+    } catch (e) {
+      // El usuario ya tiene su copia segura en la bóveda aunque esto falle;
+      // solo avisamos que el original sigue visible en la galería.
+      galleryError = e instanceof Error ? e.message : "No se pudo quitar de la galería";
+    }
+  }
+
+  return { item, removedFromGallery, galleryError };
 }
 
 export function removeFileFromVault(uri: string) {
